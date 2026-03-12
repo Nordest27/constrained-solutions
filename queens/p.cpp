@@ -1,67 +1,109 @@
-/*
- *  Authors:
- *    Christian Schulte <schulte@gecode.org>
- *
- *  Copyright:
- *    Christian Schulte, 2008-2013
- *
- *  Permission is hereby granted, free of charge, to any person obtaining
- *  a copy of this software, to deal in the software without restriction,
- *  including without limitation the rights to use, copy, modify, merge,
- *  publish, distribute, sublicense, and/or sell copies of the software,
- *  and to permit persons to whom the software is furnished to do so, subject
- *  to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be
- *  included in all copies or substantial portions of the software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- *  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- *  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- *  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- *  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
-
+#include <cassert>
+#include <cstdlib>
 #include <gecode/int.hh>
 #include <gecode/minimodel.hh>
 #include <gecode/search.hh>
 
+using namespace std;
 using namespace Gecode;
 
-class SendMoreMoney : public Space {
-protected:
-  IntVarArray l;
+class Queens : public Space {
+
+private:
+  int n;  
+  BoolVarArray q;
+
 public:
-  SendMoreMoney() : l(*this, 8, 0, 9) {
-    IntVar s(l[0]), e(l[1]), n(l[2]), d(l[3]),
-           m(l[4]), o(l[5]), r(l[6]), y(l[7]);
-    rel(*this, s != 0);
-    rel(*this, m != 0);
-    distinct(*this, l);
-    rel(*this,             1000*s + 100*e + 10*n + d
-                         + 1000*m + 100*o + 10*r + e
-              == 10000*m + 1000*o + 100*n + 10*e + y);
-    branch(*this, l, INT_VAR_SIZE_MIN(), INT_VAL_MIN());
+  Queens(int nn) : n(nn), q(*this, nn*nn, 0, 1) {
+
+    // n queens in total.
+    linear(*this, q, IRT_EQ, n);
+
+    // At most 1 queen per row.
+    for (int i = 0; i < n; ++i) {
+      BoolVarArgs v(n);
+      for (int j = 0; j < n; ++j)
+	v[j] = queen(i, j);
+      linear(*this, v, IRT_LQ, 1);
+    }
+
+    // At most 1 queen per column.
+    for (int j = 0; j < n; ++j) {
+      BoolVarArgs v(n);
+      for (int i = 0; i < n; ++i)
+	v[i] = queen(i, j);
+      linear(*this, v, IRT_LQ, 1);
+    }
+
+    // At most 1 queen per diagonal.
+
+    // i - j = k
+    // 0 <= i <= n-1
+    // 0 <= j <= n-1 -> k <= i <= k+n-1
+    // max(0, k) <= i <= min(n-1, k+n-1)
+    // min(k) = 1-n
+    // max(k) = n-1
+    for (int k = 1-n; k <= n-1; ++k) {
+      int l = max(0, k);
+      int u = min(n-1, k+n-1);
+      BoolVarArgs v(u-l+1);
+      for (int i = l; i <= u; ++i) {
+	int j = i - k;
+	v[i-l] = queen(i, j);
+      }
+      linear(*this, v, IRT_LQ, 1);
+    }
+
+    // i + j = k
+    // 0 <= i <= n-1
+    // 0 <= j <= n-1 -> k-n+1 <= i <= k
+    // max(0, k-n+1) <= i <= min(n-1, k)
+    // min(k) = 0
+    // max(k) = 2n-2
+    for (int k = 0; k <= 2*n-2; ++k) {
+      int l = max(0, k-n+1);
+      int u = min(n-1, k);
+      BoolVarArgs v(u-l+1);
+      for (int i = l; i <= u; ++i) {
+	int j = k - i;
+	v[i-l] = queen(i, j);
+      }
+      linear(*this, v, IRT_LQ, 1);
+    }
+
+    branch(*this, q, BOOL_VAR_NONE(), BOOL_VAL_MAX());
   }
-  SendMoreMoney(SendMoreMoney& s) : Space(s) {
-    l.update(*this, s.l);
+
+  BoolVar queen(int i, int j) const {
+    return q[i*n+j];
   }
+
+  Queens(Queens& s) : Space(s) {
+    q.update(*this, s.q);
+    n = s.n;
+  }
+
   virtual Space* copy() {
-    return new SendMoreMoney(*this);
+    return new Queens(*this);
   }
+
   void print() const {
-    std::cout << l << std::endl;
+    for (int i = 0; i < n; ++i) {
+      for (int j = 0; j < n; ++j)
+	cout << (queen(i, j).val() ? 'X' : '.');
+      cout << endl;
+    }
   }
 };
 
-int main() {
-  SendMoreMoney* m = new SendMoreMoney;
-  DFS<SendMoreMoney> e(m);
+int main(int argc, char* argv[]) {
+  if (argc != 2) return 1;
+  int n = atoi(argv[1]);
+  Queens* m = new Queens(n);
+  DFS<Queens> e(m);
   delete m;
-  while (SendMoreMoney* s = e.next()) {
-    s->print(); delete s;
+  if (Queens* s = e.next()) {
+    s->print();
+    delete s;
   }
 }
